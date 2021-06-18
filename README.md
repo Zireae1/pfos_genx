@@ -5,3 +5,5 @@
 - graphs: plots obtained during analysis
 
 microbiome.R processing scripts for 16S rRNA data analysis.
+
+<img align="center" src="Schematic.png" alt="Project" width="400">
