@@ -6,4 +6,4 @@
 
 microbiome.R processing scripts for 16S rRNA data analysis.
 
-<img align="center" src="Schematic.png" alt="Project" width="400">
+<img align="center" src="Schematic.png" alt="Project" width="800">
