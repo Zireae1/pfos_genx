@@ -18,7 +18,7 @@ library(ape)
 # data - all data tables
 # graphs - folder to store saved plots
 # output - folder to store all generated output such as tables with processed counts etc.:
-setwd("/Users/Zireael/Desktop/16S_analysis/Clean_code/") # replace with your working directory
+setwd("/Users/veronika/Desktop/pfos_genx-main/") # replace with your working directory
 
 # load sample metadata
 meta<-fread("data/Metadata.csv", stringsAsFactors = F, header = T, data.table = F)
@@ -315,9 +315,68 @@ dist_cvsc<-as.numeric(dm[ctrl_ids, ctrl_ids])
 dist_cvsc<-dist_cvsc[-which(dist_cvsc==0)]
 dist_cvsa<-as.numeric(dm[-ctrl_ids, ctrl_ids])
 
-t.test(dist_cvsc,dist_cvsa)
-ks.test(dist_cvsc,dist_cvsa)
+t.test(unique(dist_cvsc),dist_cvsa)
+ks.test(unique(dist_cvsc),unique(dist_cvsa))
+wilcox.test(unique(dist_cvsc),dist_cvsa, alternative = "two.sided")
 
+#Run PERMANOVA on distances.
+lab<-meta$Treatment[which(meta$`Sample ID`%in%colnames(dm))]
+adonis(as.dist(dm) ~ lab,  permutations = 1000)
+
+### Group dissimilarity comparison:
+### compare ctrl vs ctrl, ctrl vs PFOS, ctrl vs GenX, PFOS vs GenX (by conc???)
+trt<-c("PFOS_C","GenX_C")
+rep.ids<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt)])
+dist_cvsc<-as.numeric(dm[rep.ids, rep.ids])
+dist_cvsc<-dist_cvsc[-which(dist_cvsc==0)]
+dist_cvsa<-as.numeric(dm[-rep.ids, rep.ids])
+
+df<-cbind(unique(dist_cvsc), "ctrl vs ctrl")
+
+trt2<-c("PFOS_5mg","PFOS_10mg","PFOS_20mg")
+rep.ids2<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt2)])
+dist_cvsa<-as.numeric(dm[rep.ids2, rep.ids])
+df<-rbind(df, cbind(dist_cvsa, "ctrl vs PFOS"))
+
+trt3<-c("GenX_10mg","GenX_20mg","GenX_100mg")
+rep.ids3<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt3)])
+dist_cvsa<-as.numeric(dm[rep.ids3, rep.ids])
+df<-rbind(df, cbind(dist_cvsa, "ctrl vs GenX"))
+
+dist_cvsa<-as.numeric(dm[rep.ids3, rep.ids2])
+df<-rbind(df, cbind(dist_cvsa, "PFOS vs GenX"))
+
+df<-as.data.frame(df)
+df$dist_cvsa<-as.numeric(df$dist_cvsa)
+
+cairo_pdf(paste("graphs/Dist_colon_metag.pdf", sep=""), 
+          width = 2.5, height = 5) # save plot
+
+theme_set(
+  theme_classic() +
+    theme(legend.position = "top")
+)
+
+df <- df %>%
+  mutate( V2=factor(V2,levels=c("ctrl vs ctrl", "ctrl vs PFOS", "ctrl vs GenX", "PFOS vs GenX")) )
+
+ggplot(df, aes(x = V2, y = dist_cvsa, fill = V2)) + xlab("Compared sample groups") + ylab("Bray-Curtis dissimilarity") +
+  ylim(0.2,1.1) +
+  geom_violin(alpha = 0.5) +
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0.8, 
+               #dotsize=1, 
+               binwidth=0.01)+
+  #geom_point(position = position_jitter(seed = 1, width = 0.2)) +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("#FC4E07", "#0073C2FF", "#EFC000FF","olivedrab3")) +
+  geom_signif(comparisons = list(c("ctrl vs ctrl", "ctrl vs PFOS"), 
+                                      c("ctrl vs ctrl", "ctrl vs GenX"), 
+                                      c("ctrl vs GenX", "ctrl vs PFOS")), test = "wilcox.test",
+              #y_position=c(0.8, 0.9, 0.85),   
+              y_position=c(0.96,1.04, 1.00), #vjust = 0.1,
+              map_signif_level=TRUE)
+
+dev.off()
 
 ################################################################################################   
 ###                   Heatmap top genera separate colon/SI       (Fig 2A)
@@ -809,6 +868,125 @@ barplot(as.numeric(all_colon[,3]), col=all_colon[,5], horiz=TRUE,
 
 dev.off()
 
+
+#Run PERMANOVA on distances.
+lab<-meta$Treatment[which(meta$`Sample ID`%in%colnames(dm))]
+adonis(as.dist(dm) ~ lab,  permutations = 1000)
+unique(lab)
+betadisper(as.dist(dm), lab)
+
+mod <- betadisper(as.dist(dm), lab)
+mod
+
+## Perform test
+anova(mod)
+
+## Permutation test for F
+permutest(mod, pairwise = TRUE, permutations = 99)
+
+## Tukey's Honest Significant Differences
+(mod.HSD <- TukeyHSD(mod))
+plot(mod.HSD)
+
+################################################################################################   
+###                   Try dm regression plot
+################################################################################################
+cairo_pdf(paste("graphs/Colon_dist_reg.pdf", sep=""), 
+          width = 3, height = 4) # save plot
+
+
+trt<-c("PFOS_C","GenX_C")
+rep.ids<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt)])
+dist_cvsc<-as.numeric(dm[rep.ids, rep.ids])
+dist_cvsc<-dist_cvsc[-which(dist_cvsc==0)]
+dist_cvsa<-as.numeric(dm[-rep.ids, rep.ids])
+
+dm.ms<-mean(unique(dist_cvsc))#, "ctrl vs ctrl")
+dm.sds<-sd(unique(dist_cvsc))#, "ctrl vs ctrl")
+
+trt2<-c("GenX_10mg")
+rep.ids2<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt2)])
+dist_cvsa<-as.numeric(dm[rep.ids2, rep.ids])
+dm.ms<-c(dm.ms, mean(dist_cvsa))#, "ctrl vs PFOS_5"))
+dm.sds<-c(dm.sds, sd(dist_cvsa))#, "ctrl vs PFOS_5"))
+
+trt2<-c("GenX_20mg")
+rep.ids2<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt2)])
+dist_cvsa<-as.numeric(dm[rep.ids2, rep.ids])
+dm.ms<-c(dm.ms, mean(dist_cvsa))#, "ctrl vs PFOS_10"))
+dm.sds<-c(dm.sds, sd(dist_cvsa))#, "ctrl vs PFOS_10"))
+
+trt2<-c("GenX_100mg")
+rep.ids2<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt2)])
+dist_cvsa<-as.numeric(dm[rep.ids2, rep.ids])
+dm.ms<-c(dm.ms, mean(dist_cvsa))#, "ctrl vs PFOS_20"))
+dm.sds<-c(dm.sds, sd(dist_cvsa))#, "ctrl vs PFOS_10"))
+
+plot(c(1,3,4,5), dm.ms,
+     xlim=c(1,5),
+     xlab="Concentration, mg/L",
+     pch=19, 
+     ylab="Bray-Curtis dissimilarity",
+     #main="Small intestine",
+     ylim=c(0,1),
+     main="Colon",
+     col=alpha(main_palette[2], 1), xaxt="n"
+)
+axis(1, at=c(1,2,3,4,5), labels=c("Ctrl", "5", "10", "20","100") )
+# hack: we draw arrows but with very special "arrowheads"
+arrows(c(1,3,4,5), dm.ms-dm.sds, c(1,3,4,5), dm.ms+dm.sds, 
+       length=0.05, angle=90, code=3, 
+       alpha(main_palette[2], 1), lwd=2)
+lines(c(1,3,4,5), dm.ms, col=alpha(main_palette[2], 1), lwd=2)
+
+
+trt<-c("PFOS_C", "GenX_C")
+rep.ids<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt)])
+dist_cvsc<-as.numeric(dm[rep.ids, rep.ids])
+dist_cvsc<-dist_cvsc[-which(dist_cvsc==0)]
+dist_cvsa<-as.numeric(dm[-rep.ids, rep.ids])
+
+dm.ms<-mean(unique(dist_cvsc))#, "ctrl vs ctrl")
+dm.sds<-sd(unique(dist_cvsc))#, "ctrl vs ctrl")
+
+trt2<-c("PFOS_5mg")
+rep.ids2<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt2)])
+dist_cvsa<-as.numeric(dm[rep.ids2, rep.ids])
+dm.ms<-c(dm.ms, mean(dist_cvsa))#, "ctrl vs PFOS_5"))
+dm.sds<-c(dm.sds, sd(dist_cvsa))#, "ctrl vs PFOS_5"))
+
+trt2<-c("PFOS_10mg")
+rep.ids2<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt2)])
+dist_cvsa<-as.numeric(dm[rep.ids2, rep.ids])
+dm.ms<-c(dm.ms, mean(dist_cvsa))#, "ctrl vs PFOS_10"))
+dm.sds<-c(dm.sds, sd(dist_cvsa))#, "ctrl vs PFOS_10"))
+
+trt2<-c("PFOS_20mg")
+rep.ids2<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment%in%trt2)])
+dist_cvsa<-as.numeric(dm[rep.ids2, rep.ids])
+dm.ms<-c(dm.ms, mean(dist_cvsa))#, "ctrl vs PFOS_20"))
+dm.sds<-c(dm.sds, sd(dist_cvsa))#, "ctrl vs PFOS_10"))
+
+points(c(1,2,3,4), dm.ms, col=alpha(main_palette[1], 1), pch=16)
+
+# hack: we draw arrows but with very special "arrowheads"
+arrows(c(1,2,3,4), dm.ms-dm.sds, c(1,2,3,4), dm.ms+dm.sds, 
+       length=0.05, angle=90, code=3, lwd=2,
+       alpha(main_palette[1], 1))
+lines(c(1,2,3,4), dm.ms, col=alpha(main_palette[1], 1), lwd=2)
+
+legend("topleft", #inset=c(-0.18,0), 
+       bty="n", legend = c("GenX", "PFOS"), 
+       col = c(main_palette[2], main_palette[1]), lty= 0, pch = 16)
+dev.off()
+
+################################################################################################   
+###                   Try ANOVA test for microbes?
+################################################################################################
+# aov.shannon.age = aov(shannon ~ AgeGroup, data=meta)
+# TukeyHSD(aov.shannon.age)
+
+
 # df<-t(abundance)
 # for(i in 1:ncol(df)){
 #   #i<-1
@@ -857,10 +1035,36 @@ dev.off()
 # }
 # 
 
+# ###### check distances between replicates, vs distances to others:
+# trts<-unique(meta$Treatment)
+# all.trip<-vector()
+# all.not.trip<-vector()
+# for(t in trts){
+#   #t<-"GenX_10mg"
+#   rep.ids<-which(colnames(dm)%in%meta$`Sample ID`[which(meta$Treatment==t)])
+#   dist_cvsc<-as.numeric(dm[rep.ids, rep.ids])
+#   dist_cvsc<-dist_cvsc[-which(dist_cvsc==0)]
+#   dist_cvsa<-as.numeric(dm[-rep.ids, rep.ids])
+#   all.trip<-c(all.trip, unique(dist_cvsc))
+#   all.not.trip<-c(all.not.trip, dist_cvsa)
+#   boxplot(dist_cvsc, dist_cvsa)
+#   print(ks.test(dist_cvsc,dist_cvsa))
+#   
+# }
+# set1<-unique(all.not.trip)
+# set2<-unique(all.trip)
+# 
+# df<-cbind(set1, "between groups")
+# df<-rbind(df, cbind(set2, "within groups"))
+# df<-as.data.frame(df)
+# df$set1<-as.numeric(df$set1)
+# 
+# ggplot(df, aes(x = V2, y = set1, fill = V2)) +
+#   geom_violin(alpha = 0.5) +
+#   geom_point(position = position_jitter(seed = 1, width = 0.2)) +
+#   theme(legend.position = "none")
+# 
+# ### in principle replicates are significantly closer to each other than to other samples
+# boxplot(set1, set2)
+# ks.test(set1, set2)
 
-
-
-
-################################################################################################   
-###                   Plots for regression analysis      (Fig 2B-C)
-################################################################################################
